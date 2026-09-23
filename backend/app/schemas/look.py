@@ -47,3 +47,17 @@ class GenerateLookRequest(BaseModel):
     temperature: Optional[float] = None
     city: Optional[str] = None
     count: int = Field(default=3, ge=1, le=5)
+
+
+class EvaluateLookRequest(BaseModel):
+    clothing_item_ids: List[int] = Field(..., min_length=1)
+    occasion: Optional[str] = None
+    temperature: Optional[float] = None
+
+
+class EvaluateLookResponse(BaseModel):
+    score: float
+    verdict: str
+    pros: List[str] = []
+    cons: List[str] = []
+    suggestions: List[str] = []
