@@ -22,6 +22,7 @@ class ClothingCreate(ClothingBase):
     image_front: Optional[str] = None
     image_back: Optional[str] = None
     image_label: Optional[str] = None
+    image_clean: Optional[str] = None
 
 
 class ClothingUpdate(BaseModel):
@@ -38,6 +39,10 @@ class ClothingUpdate(BaseModel):
     max_temp: Optional[float] = None
     notes: Optional[str] = None
     is_active: Optional[bool] = None
+    image_front: Optional[str] = None
+    image_back: Optional[str] = None
+    image_label: Optional[str] = None
+    image_clean: Optional[str] = None
 
 
 class ClothingOut(ClothingBase):
