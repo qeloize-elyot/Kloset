@@ -13,8 +13,16 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
-    user = await auth_service.create_user(db, user_in)
-    return user
+    try:
+        user = await auth_service.create_user(db, user_in)
+        return user
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erro ao criar conta: {type(e).__name__}: {e}",
+        )
 
 
 @router.post("/login", response_model=Token)
