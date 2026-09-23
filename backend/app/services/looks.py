@@ -10,6 +10,7 @@ from app.models.look import Look, LookItem, LookFeedback
 from app.schemas.look import GenerateLookRequest, LookFeedbackCreate, EvaluateLookRequest
 from app.core.config import get_settings
 from app.services import gemini as gemini_service
+from app.services import weather as weather_service
 
 
 TOP_CATEGORIES = {"camiseta", "camisa", "blusa", "regata", "moletom", "sueter", "suéter", "casaco", "jaqueta"}
@@ -56,13 +57,36 @@ async def _reload_looks(db: AsyncSession, look_ids: list[int]) -> List[Look]:
     return list(result.scalars().all())
 
 
+async def _resolve_weather(request: GenerateLookRequest) -> tuple[float | None, str | None, str | None]:
+    """Retorna (temperature, condition, city_label)."""
+    temperature = request.temperature
+    condition = None
+    city_label = None
+
+    if request.city and request.city.strip():
+        try:
+            w = await weather_service.get_weather_by_city(request.city.strip())
+            if temperature is None and w.get("temperature") is not None:
+                temperature = float(w["temperature"])
+            condition = w.get("condition")
+            city_label = w.get("city")
+        except HTTPException:
+            # se cidade falhar e nao tiver temperatura manual, propaga
+            if temperature is None:
+                raise
+
+    return temperature, condition, city_label
+
+
 async def _generate_rule_based(
     db: AsyncSession,
     owner_id: int,
     request: GenerateLookRequest,
     all_items: list[ClothingItem],
+    temperature: float | None,
+    condition: str | None,
+    city_label: str | None,
 ) -> List[Look]:
-    temperature = request.temperature
     suitable = [i for i in all_items if _is_suitable_for_temp(i, temperature)]
     if len(suitable) < 2:
         suitable = all_items
@@ -91,16 +115,21 @@ async def _generate_rule_based(
         if temperature is not None:
             title += f" · {temperature:.0f}°C"
 
+        parts = [f"Montado para a ocasiao {request.occasion}."]
+        if city_label and temperature is not None:
+            parts.append(f"Clima em {city_label}: {temperature:.0f}°C" + (f", {condition}." if condition else "."))
+        elif temperature is not None:
+            parts.append(f"Temperatura considerada: {temperature:.0f}°C.")
+        parts.append("Pecas filtradas por categoria e clima.")
+
         look = Look(
             owner_id=owner_id,
             title=title,
             occasion=request.occasion,
             temperature=temperature,
-            rationale=(
-                f"Montado para a ocasiao {request.occasion} por regras basicas. "
-                "Configure GEMINI_API_KEY para julgamento de estilo com IA."
-            ),
-            meta={"generator": "rule_based_v1"},
+            weather_condition=condition,
+            rationale=" ".join(parts),
+            meta={"generator": "rule_based_v1", "city": city_label},
         )
         db.add(look)
         await db.flush()
@@ -130,11 +159,15 @@ async def generate_looks(
             detail="Adicione pelo menos duas pecas ao guarda-roupa para gerar looks.",
         )
 
+    temperature, condition, city_label = await _resolve_weather(request)
+
     settings = get_settings()
     if not (settings.GEMINI_API_KEY or "").strip():
-        return await _generate_rule_based(db, owner_id, request, all_items)
+        return await _generate_rule_based(
+            db, owner_id, request, all_items, temperature, condition, city_label
+        )
 
-    wardrobe = [_item_to_dict(i) for i in all_items if _is_suitable_for_temp(i, request.temperature)]
+    wardrobe = [_item_to_dict(i) for i in all_items if _is_suitable_for_temp(i, temperature)]
     if len(wardrobe) < 2:
         wardrobe = [_item_to_dict(i) for i in all_items]
 
@@ -144,11 +177,13 @@ async def generate_looks(
         ai_looks = await gemini_service.generate_looks_with_ai(
             wardrobe=wardrobe,
             occasion=request.occasion,
-            temperature=request.temperature,
+            temperature=temperature,
             count=request.count,
         )
     except Exception:
-        return await _generate_rule_based(db, owner_id, request, all_items)
+        return await _generate_rule_based(
+            db, owner_id, request, all_items, temperature, condition, city_label
+        )
 
     generated: List[Look] = []
     for entry in ai_looks[: request.count]:
@@ -166,13 +201,22 @@ async def generate_looks(
         if len(ids) < 2:
             continue
 
+        rationale = entry.get("rationale") or ""
+        if city_label and temperature is not None:
+            rationale = (
+                f"Clima em {city_label}: {temperature:.0f}°C"
+                + (f", {condition}. " if condition else ". ")
+                + rationale
+            )
+
         look = Look(
             owner_id=owner_id,
             title=entry.get("title") or f"Look {request.occasion}",
             occasion=request.occasion,
-            temperature=request.temperature,
-            rationale=entry.get("rationale") or "",
-            meta={"generator": "gemini"},
+            temperature=temperature,
+            weather_condition=condition,
+            rationale=rationale,
+            meta={"generator": "gemini", "city": city_label},
         )
         db.add(look)
         await db.flush()
@@ -181,7 +225,9 @@ async def generate_looks(
         generated.append(look)
 
     if not generated:
-        return await _generate_rule_based(db, owner_id, request, all_items)
+        return await _generate_rule_based(
+            db, owner_id, request, all_items, temperature, condition, city_label
+        )
 
     await db.commit()
     return await _reload_looks(db, [l.id for l in generated])
