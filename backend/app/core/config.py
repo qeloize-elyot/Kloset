@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Kloset"
     API_V1_STR: str = "/api/v1"
 
-    # Database (Render envia postgresql:// — convertemos para asyncpg)
+    # Database (Render envia postgresql:// — convertemos para asyncpg + SSL)
     DATABASE_URL: str = "postgresql+asyncpg://kloset:kloset@localhost:5432/kloset"
 
     # Security
@@ -29,11 +29,14 @@ class Settings(BaseSettings):
         if not v:
             return v
         # Render entrega postgresql://... — SQLAlchemy async precisa de +asyncpg
-        if v.startswith("postgresql://") and not v.startswith("postgresql+asyncpg://"):
+        if v.startswith("postgresql://") and "+asyncpg" not in v:
             v = v.replace("postgresql://", "postgresql+asyncpg://", 1)
-        # Também corrige postgres:// (sem "ql")
         if v.startswith("postgres://"):
             v = v.replace("postgres://", "postgresql+asyncpg://", 1)
+        # Render Postgres exige SSL
+        if "ssl" not in v.lower() and "localhost" not in v and "127.0.0.1" not in v:
+            sep = "&" if "?" in v else "?"
+            v = f"{v}{sep}ssl=require"
         return v
 
     class Config:
