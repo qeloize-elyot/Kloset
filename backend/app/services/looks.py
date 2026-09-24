@@ -8,12 +8,13 @@ from fastapi import HTTPException, status
 from app.models.clothing import ClothingItem
 from app.models.look import Look, LookItem, LookFeedback
 from app.schemas.look import GenerateLookRequest, LookFeedbackCreate, EvaluateLookRequest
-from app.core.config import get_settings
-from app.services import gemini as gemini_service
+from app.services import ai_style
 from app.services import weather as weather_service
 
 
-TOP_CATEGORIES = {"camiseta", "camisa", "blusa", "regata", "moletom", "sueter", "suéter", "casaco", "jaqueta"}
+TOP_CATEGORIES = {
+    "camiseta", "camisa", "blusa", "regata", "moletom", "sueter", "suéter", "casaco", "jaqueta"
+}
 BOTTOM_CATEGORIES = {"calca", "calça", "shorts", "saia", "bermuda"}
 SHOE_CATEGORIES = {"tenis", "tênis", "sapato", "sandalia", "sandália", "bota", "chinelo"}
 OUTER_CATEGORIES = {"jaqueta", "casaco", "blazer", "sobretudo"}
@@ -57,12 +58,10 @@ async def _reload_looks(db: AsyncSession, look_ids: list[int]) -> List[Look]:
     return list(result.scalars().all())
 
 
-async def _resolve_weather(request: GenerateLookRequest) -> tuple[float | None, str | None, str | None]:
-    """Retorna (temperature, condition, city_label)."""
+async def _resolve_weather(request: GenerateLookRequest):
     temperature = request.temperature
     condition = None
     city_label = None
-
     if request.city and request.city.strip():
         try:
             w = await weather_service.get_weather_by_city(request.city.strip())
@@ -71,10 +70,8 @@ async def _resolve_weather(request: GenerateLookRequest) -> tuple[float | None, 
             condition = w.get("condition")
             city_label = w.get("city")
         except HTTPException:
-            # se cidade falhar e nao tiver temperatura manual, propaga
             if temperature is None:
                 raise
-
     return temperature, condition, city_label
 
 
@@ -103,9 +100,9 @@ async def _generate_rule_based(
             selected.append(random.choice(tops))
         if bottoms:
             selected.append(random.choice(bottoms))
-        if shoes and random.random() > 0.3:
+        if shoes and random.random() > 0.25:
             selected.append(random.choice(shoes))
-        if temperature is not None and temperature < 18 and outers and random.random() > 0.4:
+        if temperature is not None and temperature < 18 and outers and random.random() > 0.35:
             selected.append(random.choice(outers))
         if len(selected) < 2:
             selected = random.sample(suitable, min(3, len(suitable)))
@@ -115,12 +112,18 @@ async def _generate_rule_based(
         if temperature is not None:
             title += f" · {temperature:.0f}°C"
 
-        parts = [f"Montado para a ocasiao {request.occasion}."]
+        parts = [f"Montado para “{request.occasion}”."]
         if city_label and temperature is not None:
-            parts.append(f"Clima em {city_label}: {temperature:.0f}°C" + (f", {condition}." if condition else "."))
+            parts.append(
+                f"Clima em {city_label}: {temperature:.0f}°C"
+                + (f", {condition}." if condition else ".")
+            )
         elif temperature is not None:
-            parts.append(f"Temperatura considerada: {temperature:.0f}°C.")
-        parts.append("Pecas filtradas por categoria e clima.")
+            parts.append(f"Temperatura: {temperature:.0f}°C.")
+        parts.append(
+            "Combinacao por categoria e clima. "
+            "Com GROQ_API_KEY ou GEMINI_API_KEY, as sugestoes ganham julgamento de estilo."
+        )
 
         look = Look(
             owner_id=owner_id,
@@ -129,7 +132,7 @@ async def _generate_rule_based(
             temperature=temperature,
             weather_condition=condition,
             rationale=" ".join(parts),
-            meta={"generator": "rule_based_v1", "city": city_label},
+            meta={"generator": "rule_based_v2", "city": city_label},
         )
         db.add(look)
         await db.flush()
@@ -161,20 +164,21 @@ async def generate_looks(
 
     temperature, condition, city_label = await _resolve_weather(request)
 
-    settings = get_settings()
-    if not (settings.GEMINI_API_KEY or "").strip():
+    if not ai_style.has_ai_key():
         return await _generate_rule_based(
             db, owner_id, request, all_items, temperature, condition, city_label
         )
 
-    wardrobe = [_item_to_dict(i) for i in all_items if _is_suitable_for_temp(i, temperature)]
+    wardrobe = [
+        _item_to_dict(i) for i in all_items if _is_suitable_for_temp(i, temperature)
+    ]
     if len(wardrobe) < 2:
         wardrobe = [_item_to_dict(i) for i in all_items]
 
     by_id = {i.id: i for i in all_items}
 
     try:
-        ai_looks = await gemini_service.generate_looks_with_ai(
+        ai_looks = await ai_style.generate_looks_with_ai(
             wardrobe=wardrobe,
             occasion=request.occasion,
             temperature=temperature,
@@ -188,8 +192,8 @@ async def generate_looks(
     generated: List[Look] = []
     for entry in ai_looks[: request.count]:
         raw_ids = entry.get("item_ids") or []
-        ids = []
-        seen = set()
+        ids: list[int] = []
+        seen: set[int] = set()
         for x in raw_ids:
             try:
                 i = int(x)
@@ -216,7 +220,7 @@ async def generate_looks(
             temperature=temperature,
             weather_condition=condition,
             rationale=rationale,
-            meta={"generator": "gemini", "city": city_label},
+            meta={"generator": "ai", "city": city_label},
         )
         db.add(look)
         await db.flush()
@@ -238,11 +242,13 @@ async def evaluate_look(
     owner_id: int,
     data: EvaluateLookRequest,
 ) -> dict:
-    settings = get_settings()
-    if not (settings.GEMINI_API_KEY or "").strip():
+    if not ai_style.has_ai_key():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Configure GEMINI_API_KEY no Render para avaliar looks com IA.",
+            detail=(
+                "Configure GROQ_API_KEY (recomendado) ou GEMINI_API_KEY no Render "
+                "para avaliar looks com IA."
+            ),
         )
 
     result = await db.execute(
@@ -257,7 +263,7 @@ async def evaluate_look(
         raise HTTPException(status_code=404, detail="Nenhuma peca encontrada.")
 
     try:
-        return await gemini_service.evaluate_look_with_ai(
+        return await ai_style.evaluate_look_with_ai(
             items=[_item_to_dict(i) for i in items],
             occasion=data.occasion,
             temperature=data.temperature,
@@ -265,7 +271,7 @@ async def evaluate_look(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Falha ao consultar Gemini: {e}",
+            detail=f"Falha ao consultar IA: {e}",
         )
 
 
