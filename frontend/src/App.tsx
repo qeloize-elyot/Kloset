@@ -8,6 +8,7 @@ import { Register } from './pages/Register'
 import { Wardrobe } from './pages/Wardrobe'
 import { Generate } from './pages/Generate'
 import { Looks } from './pages/Looks'
+import { Style } from './pages/Style'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const user = useAuthStore((s) => s.user)
@@ -28,30 +29,10 @@ export default function App() {
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
-        <Route
-          path="/wardrobe"
-          element={
-            <ProtectedRoute>
-              <Wardrobe />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/generate"
-          element={
-            <ProtectedRoute>
-              <Generate />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/looks"
-          element={
-            <ProtectedRoute>
-              <Looks />
-            </ProtectedRoute>
-          }
-        />
+        <Route path="/wardrobe" element={<ProtectedRoute><Wardrobe /></ProtectedRoute>} />
+        <Route path="/generate" element={<ProtectedRoute><Generate /></ProtectedRoute>} />
+        <Route path="/looks" element={<ProtectedRoute><Looks /></ProtectedRoute>} />
+        <Route path="/style" element={<ProtectedRoute><Style /></ProtectedRoute>} />
       </Route>
     </Routes>
   )
