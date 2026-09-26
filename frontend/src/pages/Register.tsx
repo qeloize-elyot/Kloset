@@ -29,7 +29,7 @@ export function Register() {
         password,
         full_name: fullName || null,
       })
-      setAuth(data.access_token, data.user)
+      setAuth(data.user, data.access_token)
       navigate('/wardrobe')
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail

@@ -4,7 +4,7 @@ import { useAuthStore } from '../lib/store'
 import api from '../lib/api'
 import type { ClothingItem, Look } from '../lib/types'
 import { Button } from '../components/ui/Button'
-import { OutfitCanvas, clothingToPiece } from '../components/ui/OutfitCanvas'
+import { OutfitCanvas } from '../components/ui/OutfitCanvas'
 
 export function Home() {
   const { user } = useAuthStore()
@@ -44,7 +44,6 @@ export function Home() {
           </p>
         </header>
 
-        {/* Card principal do último look — estilo daily card Cladwell/Whering */}
         <section className="mb-12">
           {loading ? (
             <div className="card h-64 animate-pulse bg-ink-50/50" />

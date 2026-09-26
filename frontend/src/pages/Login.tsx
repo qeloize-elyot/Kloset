@@ -20,7 +20,7 @@ export function Login() {
     setLoading(true)
     try {
       const { data } = await api.post<TokenResponse>('/auth/login', { email, password })
-      setAuth(data.access_token, data.user)
+      setAuth(data.user, data.access_token)
       navigate('/')
     } catch {
       setError('E-mail ou senha incorretos.')
