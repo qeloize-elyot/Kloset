@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import api from '../lib/api'
 import type { Look } from '../lib/types'
 import { Button } from '../components/ui/Button'
+import { OutfitCanvas } from '../components/ui/OutfitCanvas'
 
 export function Swipe() {
   const navigate = useNavigate()
@@ -25,11 +26,13 @@ export function Swipe() {
         // fall through
       }
     }
-    // se não veio da geração, tenta histórico
-    api.get<Look[]>('/looks').then(({ data }) => {
-      if (data.length) setLooks(data.slice(0, 8))
-      else setDone(true)
-    }).catch(() => setDone(true))
+    api
+      .get<Look[]>('/looks')
+      .then(({ data }) => {
+        if (data.length) setLooks(data.slice(0, 8))
+        else setDone(true)
+      })
+      .catch(() => setDone(true))
   }, [])
 
   const current = looks[index]
@@ -77,12 +80,12 @@ export function Swipe() {
         <p className="text-sm text-ink-500 mb-2">
           Gostei: {stats.like} · Passou: {stats.dislike}
         </p>
-        <p className="text-sm text-ink-500 mb-8">
-          Seu feedback treina as próximas sugestões.
-        </p>
+        <p className="text-sm text-ink-500 mb-8">Seu feedback treina as próximas sugestões.</p>
         <div className="flex flex-wrap justify-center gap-3">
           <Button onClick={() => navigate('/generate')}>Gerar de novo</Button>
-          <Link to="/feed"><Button variant="secondary">Ver feed</Button></Link>
+          <Link to="/feed">
+            <Button variant="secondary">Ver feed</Button>
+          </Link>
         </div>
       </div>
     )
@@ -133,41 +136,28 @@ export function Swipe() {
             transition: dragging ? 'none' : 'transform 0.25s ease',
           }}
         >
-          <div className="absolute top-4 left-4 z-10 px-3 py-1 border-2 border-emerald-600 text-emerald-700 text-sm font-semibold uppercase tracking-wider rounded-sm bg-white/90"
-            style={{ opacity: likeOpacity }}>
+          <div
+            className="absolute top-4 left-4 z-10 px-3 py-1 border-2 border-emerald-700/80 text-emerald-800 text-xs font-semibold uppercase tracking-wider rounded-sm bg-white/95"
+            style={{ opacity: likeOpacity }}
+          >
             Gostei
           </div>
-          <div className="absolute top-4 right-4 z-10 px-3 py-1 border-2 border-red-500 text-red-600 text-sm font-semibold uppercase tracking-wider rounded-sm bg-white/90"
-            style={{ opacity: nopeOpacity }}>
+          <div
+            className="absolute top-4 right-4 z-10 px-3 py-1 border-2 border-red-500/80 text-red-600 text-xs font-semibold uppercase tracking-wider rounded-sm bg-white/95"
+            style={{ opacity: nopeOpacity }}
+          >
             Passar
           </div>
 
-          <div className="p-4 grid grid-cols-2 gap-2 min-h-[220px]">
-            {current.items.map((li) => {
-              const img = li.clothing_item.image_clean || li.clothing_item.image_front
-              return (
-                <div
-                  key={li.id}
-                  className="aspect-square rounded-sm overflow-hidden flex items-center justify-center"
-                  style={{
-                    backgroundColor: img ? undefined : li.clothing_item.dominant_color || '#e8e4de',
-                    backgroundImage: img
-                      ? 'repeating-conic-gradient(#f2ebe0 0% 25%, #fff 0% 50%)'
-                      : undefined,
-                    backgroundSize: img ? '10px 10px' : undefined,
-                  }}
-                >
-                  {img ? (
-                    <img src={img} alt="" className="h-full w-full object-contain pointer-events-none" />
-                  ) : (
-                    <span className="text-[10px] uppercase tracking-wider text-white/90 mix-blend-difference px-1 text-center">
-                      {li.clothing_item.category}
-                    </span>
-                  )}
-                </div>
-              )
-            })}
-          </div>
+          <OutfitCanvas
+            pieces={current.items.map((li) => ({
+              id: li.clothing_item.id,
+              name: li.clothing_item.name,
+              category: li.clothing_item.category,
+              dominant_color: li.clothing_item.dominant_color,
+              image: li.clothing_item.image_clean || li.clothing_item.image_front,
+            }))}
+          />
 
           <div className="p-5 border-t border-ink-50">
             <h2 className="font-display text-2xl text-ink-950 mb-1">{current.title}</h2>
@@ -186,18 +176,18 @@ export function Swipe() {
         </article>
       </div>
 
-      <div className="flex justify-center gap-4 mt-8">
+      <div className="flex justify-center gap-6 mt-8">
         <button
           type="button"
           onClick={() => void decide('dislike')}
-          className="h-14 w-14 rounded-full border border-ink-200 bg-white text-ink-600 text-xs font-medium hover:border-red-300 hover:text-red-600 transition-colors"
+          className="h-14 w-14 rounded-full border border-ink-200 bg-white text-ink-600 text-[11px] font-medium hover:border-red-300 hover:text-red-600 transition-colors shadow-sm"
         >
           Passar
         </button>
         <button
           type="button"
           onClick={() => void decide('like')}
-          className="h-14 w-14 rounded-full bg-ink-950 text-cream-50 text-xs font-medium hover:bg-ink-800 transition-colors"
+          className="h-14 w-14 rounded-full bg-ink-950 text-cream-50 text-[11px] font-medium hover:bg-ink-800 transition-colors shadow-sm"
         >
           Gostei
         </button>
