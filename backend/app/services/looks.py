@@ -10,7 +10,7 @@ from app.models.clothing import ClothingItem
 from app.models.look import Look, LookItem, LookFeedback
 from app.schemas.look import GenerateLookRequest, LookFeedbackCreate, EvaluateLookRequest
 from app.services import ai_style
-from app.services import weather as weather_service
+from app.services.climate import resolve_climate
 
 
 TOP_CATEGORIES = {
@@ -60,7 +60,6 @@ def _hex_to_hsv(hex_color: str | None) -> tuple[float, float, float] | None:
 
 
 def _color_score(a: ClothingItem, b: ClothingItem) -> float:
-    """Maior = combina melhor (harmônico ou contraste deliberado)."""
     ha = _hex_to_hsv(a.dominant_color)
     hb = _hex_to_hsv(b.dominant_color)
     if not ha or not hb:
@@ -68,16 +67,12 @@ def _color_score(a: ClothingItem, b: ClothingItem) -> float:
     h1, s1, v1 = ha
     h2, s2, v2 = hb
     dh = min(abs(h1 - h2), 1 - abs(h1 - h2))
-    # monocromático / análogo
     if dh < 0.08:
         return 0.85 + 0.1 * (1 - abs(v1 - v2))
-    # complementar
     if 0.4 < dh < 0.6:
         return 0.9
-    # néutro (baixa saturação) casa com tudo
     if s1 < 0.15 or s2 < 0.15:
         return 0.8
-    # triádico aproximado
     if 0.28 < dh < 0.4:
         return 0.75
     return 0.35 + random.random() * 0.15
@@ -98,12 +93,25 @@ def _is_suitable_for_temp(item: ClothingItem, temperature: float | None) -> bool
     return True
 
 
+def _is_suitable_for_climate(item: ClothingItem, climate: str | None) -> bool:
+    if not climate:
+        return True
+    cat = (item.category or "").lower()
+    c = climate.lower()
+    if c == "calor" and cat in {"casaco", "sobretudo", "moletom", "bota"}:
+        return False
+    if c == "frio" and cat in {"shorts", "regata", "sandalia", "sandália", "chinelo"}:
+        return False
+    if c == "chuva" and cat in {"chinelo", "sandalia", "sandália"}:
+        return False
+    return True
+
+
 def _pick_best_partner(anchor: ClothingItem, candidates: list[ClothingItem]) -> ClothingItem | None:
     if not candidates:
         return None
     scored = [(c, _color_score(anchor, c) + random.random() * 0.2) for c in candidates]
     scored.sort(key=lambda x: x[1], reverse=True)
-    # top 3 com peso
     top = scored[: min(3, len(scored))]
     return random.choices([c for c, _ in top], weights=[s for _, s in top], k=1)[0]
 
@@ -113,9 +121,8 @@ def _creative_rationale(
     occasion: str,
     temperature: float | None,
     condition: str | None,
-    city_label: str | None,
 ) -> str:
-    cats = [ (i.category or "").lower() for i in items ]
+    cats = [(i.category or "").lower() for i in items]
     colors = [i.dominant_color for i in items if i.dominant_color]
     fabrics = [i.fabric for i in items if i.fabric]
     patterns = [i.pattern for i in items if i.pattern and i.pattern != "lisa"]
@@ -131,13 +138,14 @@ def _creative_rationale(
         bits.append("O vestido/macacão é a peça âncora; o resto só apoia.")
     if fabrics:
         bits.append(f"Textura em jogo com {fabrics[0]}.")
-
     if not bits:
         bits.append("Proporção cima/baixo pensada para a ocasião, sem forçar tendência.")
 
     head = f"Para “{occasion}”."
-    if city_label and temperature is not None:
-        head += f" Clima em {city_label}: {temperature:.0f}°C" + (f", {condition}." if condition else ".")
+    if condition and temperature is not None:
+        head += f" Clima {condition} (~{temperature:.0f}°C)."
+    elif condition:
+        head += f" Clima: {condition}."
     elif temperature is not None:
         head += f" Temperatura {temperature:.0f}°C."
 
@@ -151,23 +159,6 @@ async def _reload_looks(db: AsyncSession, look_ids: list[int]) -> List[Look]:
         .options(selectinload(Look.items).selectinload(LookItem.clothing_item))
     )
     return list(result.scalars().all())
-
-
-async def _resolve_weather(request: GenerateLookRequest):
-    temperature = request.temperature
-    condition = None
-    city_label = None
-    if request.city and request.city.strip():
-        try:
-            w = await weather_service.get_weather_by_city(request.city.strip())
-            if temperature is None and w.get("temperature") is not None:
-                temperature = float(w["temperature"])
-            condition = w.get("condition")
-            city_label = w.get("city")
-        except HTTPException:
-            if temperature is None:
-                raise
-    return temperature, condition, city_label
 
 
 async def _liked_item_ids(db: AsyncSession, owner_id: int) -> set[int]:
@@ -201,9 +192,12 @@ async def _generate_rule_based(
     all_items: list[ClothingItem],
     temperature: float | None,
     condition: str | None,
-    city_label: str | None,
 ) -> List[Look]:
-    suitable = [i for i in all_items if _is_suitable_for_temp(i, temperature)]
+    suitable = [
+        i
+        for i in all_items
+        if _is_suitable_for_temp(i, temperature) and _is_suitable_for_climate(i, condition)
+    ]
     if len(suitable) < 2:
         suitable = all_items
 
@@ -227,13 +221,15 @@ async def _generate_rule_based(
 
     used_combos: set[tuple[int, ...]] = set()
     generated: List[Look] = []
+    need_outer = condition in {"frio", "chuva", "vento"} or (
+        temperature is not None and temperature < 18
+    )
 
-    for attempt in range(request.count * 4):
+    for _ in range(request.count * 4):
         if len(generated) >= request.count:
             break
         selected: List[ClothingItem] = []
 
-        # às vezes vestido como âncora
         if dresses and random.random() < 0.22:
             d = random.choice(dresses)
             selected.append(d)
@@ -241,7 +237,7 @@ async def _generate_rule_based(
                 partner = _pick_best_partner(d, shoes)
                 if partner:
                     selected.append(partner)
-            if temperature is not None and temperature < 18 and outers:
+            if need_outer and outers:
                 o = _pick_best_partner(d, outers)
                 if o:
                     selected.append(o)
@@ -257,12 +253,10 @@ async def _generate_rule_based(
                     s = _pick_best_partner(selected[-1], shoes)
                     if s:
                         selected.append(s)
-                if temperature is not None and temperature < 18 and outers and random.random() > 0.3:
+                if need_outer and outers and random.random() > 0.25:
                     o = _pick_best_partner(selected[0], outers)
                     if o:
                         selected.append(o)
-            elif bottoms and tops:
-                pass
             else:
                 selected = random.sample(suitable, min(3, len(suitable)))
 
@@ -276,8 +270,8 @@ async def _generate_rule_based(
         used_combos.add(key)
 
         title = random.choice(TITLE_TEMPLATES).format(occasion=request.occasion)
-        if temperature is not None:
-            title += f" · {temperature:.0f}°C"
+        if condition:
+            title += f" · {condition}"
 
         look = Look(
             owner_id=owner_id,
@@ -286,9 +280,9 @@ async def _generate_rule_based(
             temperature=temperature,
             weather_condition=condition,
             rationale=_creative_rationale(
-                unique_items, request.occasion, temperature, condition, city_label
+                unique_items, request.occasion, temperature, condition
             ),
-            meta={"generator": "creative_rules_v3", "city": city_label},
+            meta={"generator": "creative_rules_v4", "climate": condition},
         )
         db.add(look)
         await db.flush()
@@ -297,7 +291,6 @@ async def _generate_rule_based(
         generated.append(look)
 
     if not generated:
-        # fallback mínimo
         sample = random.sample(suitable, min(3, len(suitable)))
         look = Look(
             owner_id=owner_id,
@@ -305,10 +298,8 @@ async def _generate_rule_based(
             occasion=request.occasion,
             temperature=temperature,
             weather_condition=condition,
-            rationale=_creative_rationale(
-                sample, request.occasion, temperature, condition, city_label
-            ),
-            meta={"generator": "creative_rules_v3", "city": city_label},
+            rationale=_creative_rationale(sample, request.occasion, temperature, condition),
+            meta={"generator": "creative_rules_v4", "climate": condition},
         )
         db.add(look)
         await db.flush()
@@ -338,15 +329,17 @@ async def generate_looks(
             detail="Adicione pelo menos duas peças ao guarda-roupa para gerar looks.",
         )
 
-    temperature, condition, city_label = await _resolve_weather(request)
+    temperature, condition = resolve_climate(request.climate, request.temperature)
 
     if not ai_style.has_ai_key():
         return await _generate_rule_based(
-            db, owner_id, request, all_items, temperature, condition, city_label
+            db, owner_id, request, all_items, temperature, condition
         )
 
     wardrobe = [
-        _item_to_dict(i) for i in all_items if _is_suitable_for_temp(i, temperature)
+        _item_to_dict(i)
+        for i in all_items
+        if _is_suitable_for_temp(i, temperature) and _is_suitable_for_climate(i, condition)
     ]
     if len(wardrobe) < 2:
         wardrobe = [_item_to_dict(i) for i in all_items]
@@ -362,7 +355,7 @@ async def generate_looks(
         )
     except Exception:
         return await _generate_rule_based(
-            db, owner_id, request, all_items, temperature, condition, city_label
+            db, owner_id, request, all_items, temperature, condition
         )
 
     generated: List[Look] = []
@@ -382,12 +375,8 @@ async def generate_looks(
             continue
 
         rationale = entry.get("rationale") or ""
-        if city_label and temperature is not None:
-            rationale = (
-                f"Clima em {city_label}: {temperature:.0f}°C"
-                + (f", {condition}. " if condition else ". ")
-                + rationale
-            )
+        if condition:
+            rationale = f"Clima {condition}. " + rationale
 
         look = Look(
             owner_id=owner_id,
@@ -396,7 +385,7 @@ async def generate_looks(
             temperature=temperature,
             weather_condition=condition,
             rationale=rationale,
-            meta={"generator": "ai", "city": city_label},
+            meta={"generator": "ai", "climate": condition},
         )
         db.add(look)
         await db.flush()
@@ -406,7 +395,7 @@ async def generate_looks(
 
     if not generated:
         return await _generate_rule_based(
-            db, owner_id, request, all_items, temperature, condition, city_label
+            db, owner_id, request, all_items, temperature, condition
         )
 
     await db.commit()
@@ -418,7 +407,6 @@ async def get_inspiration_feed(
     owner_id: int,
     limit: int = 12,
 ) -> list[dict]:
-    """Feed tipo Pinterest: combinações do próprio guarda-roupa ranqueadas por estilo."""
     result = await db.execute(
         select(ClothingItem).where(
             ClothingItem.owner_id == owner_id,
@@ -433,52 +421,44 @@ async def get_inspiration_feed(
     cards: list[dict] = []
     used: set[tuple[int, ...]] = set()
 
-    # gera várias propostas criativas sem persistir
     for _ in range(limit * 3):
         if len(cards) >= limit:
             break
-        req = GenerateLookRequest(occasion=random.choice([
-            "casual",
-            "trabalho",
-            "encontro",
-            "fim de semana",
-            "noite",
-            "passeio",
-        ]), count=1)
-        suitable = items
-        tops = [i for i in suitable if (i.category or "").lower() in TOP_CATEGORIES]
-        bottoms = [i for i in suitable if (i.category or "").lower() in BOTTOM_CATEGORIES]
-        shoes = [i for i in suitable if (i.category or "").lower() in SHOE_CATEGORIES]
-        outers = [i for i in suitable if (i.category or "").lower() in OUTER_CATEGORIES]
-        dresses = [i for i in suitable if (i.category or "").lower() in DRESS_CATEGORIES]
+        mood = random.choice([
+            "casual", "trabalho", "encontro", "fim de semana", "noite", "passeio",
+        ])
+        tops = [i for i in items if (i.category or "").lower() in TOP_CATEGORIES]
+        bottoms = [i for i in items if (i.category or "").lower() in BOTTOM_CATEGORIES]
+        shoes = [i for i in items if (i.category or "").lower() in SHOE_CATEGORIES]
+        outers = [i for i in items if (i.category or "").lower() in OUTER_CATEGORIES]
+        dresses = [i for i in items if (i.category or "").lower() in DRESS_CATEGORIES]
 
         selected: list[ClothingItem] = []
-        mood = req.occasion
-
         if dresses and random.random() < 0.2:
             selected.append(random.choice(dresses))
             if shoes:
                 p = _pick_best_partner(selected[0], shoes)
                 if p:
                     selected.append(p)
-        else:
-            if tops:
-                t = random.choice(tops if random.random() > 0.4 or not liked else (
+        elif tops:
+            t = random.choice(
+                tops if random.random() > 0.4 or not liked else (
                     [i for i in tops if i.id in liked] or tops
-                ))
-                selected.append(t)
-                if bottoms:
-                    b = _pick_best_partner(t, bottoms)
-                    if b:
-                        selected.append(b)
-                if shoes and random.random() > 0.25:
-                    s = _pick_best_partner(selected[-1], shoes)
-                    if s:
-                        selected.append(s)
-                if outers and random.random() > 0.55:
-                    o = _pick_best_partner(selected[0], outers)
-                    if o:
-                        selected.append(o)
+                )
+            )
+            selected.append(t)
+            if bottoms:
+                b = _pick_best_partner(t, bottoms)
+                if b:
+                    selected.append(b)
+            if shoes and random.random() > 0.25:
+                s = _pick_best_partner(selected[-1], shoes)
+                if s:
+                    selected.append(s)
+            if outers and random.random() > 0.55:
+                o = _pick_best_partner(selected[0], outers)
+                if o:
+                    selected.append(o)
 
         if len(selected) < 2:
             selected = random.sample(items, min(3, len(items)))
@@ -490,14 +470,18 @@ async def get_inspiration_feed(
         used.add(key)
 
         score = sum(1.2 if i.id in liked else 1.0 for i in unique)
-        score += sum(_color_score(unique[i], unique[j]) for i in range(len(unique)) for j in range(i + 1, len(unique)))
+        score += sum(
+            _color_score(unique[i], unique[j])
+            for i in range(len(unique))
+            for j in range(i + 1, len(unique))
+        )
 
         cards.append({
             "id": f"insp-{key[0]}-{key[-1]}-{len(cards)}",
             "title": random.choice(TITLE_TEMPLATES).format(occasion=mood),
             "mood": mood,
             "score": round(score, 2),
-            "rationale": _creative_rationale(unique, mood, None, None, None),
+            "rationale": _creative_rationale(unique, mood, None, None),
             "items": [
                 {
                     "id": i.id,
