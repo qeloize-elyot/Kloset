@@ -4,11 +4,13 @@ import { useAuthStore } from '../lib/store'
 import api from '../lib/api'
 import type { ClothingItem, Look } from '../lib/types'
 import { Button } from '../components/ui/Button'
+import { OutfitCanvas, clothingToPiece } from '../components/ui/OutfitCanvas'
 
 export function Home() {
   const { user } = useAuthStore()
   const [stats, setStats] = useState({ pieces: 0, looks: 0 })
-  const [recent, setRecent] = useState<Look[]>([])
+  const [latest, setLatest] = useState<Look | null>(null)
+  const [loading, setLoading] = useState(!!user)
 
   useEffect(() => {
     if (!user) return
@@ -19,9 +21,11 @@ export function Home() {
           api.get<Look[]>('/looks'),
         ])
         setStats({ pieces: c.data.length, looks: l.data.length })
-        setRecent(l.data.slice(0, 3))
+        setLatest(l.data[0] || null)
       } catch {
-        // silencioso
+        // ok
+      } finally {
+        setLoading(false)
       }
     }
     load()
@@ -29,107 +33,117 @@ export function Home() {
 
   if (user) {
     return (
-      <div className="mx-auto max-w-6xl px-5 py-12">
-        <div className="mb-12 md:mb-16">
-          <p className="editorial-kicker mb-3">O seu closet</p>
-          <h1 className="font-display text-4xl md:text-5xl text-ink-950 mb-3 leading-tight">
+      <div className="mx-auto max-w-6xl px-5 py-10 sm:py-14">
+        <header className="mb-12 sm:mb-16">
+          <p className="editorial-kicker mb-3">Hoje</p>
+          <h1 className="font-display text-4xl sm:text-5xl text-ink-950 leading-[1.1] mb-3">
             {user.full_name || user.email.split('@')[0]}
           </h1>
-          <p className="text-ink-600 max-w-md leading-relaxed">
-            Menos “não tenho o que vestir”. Mais combinação com o que já é seu.
+          <p className="text-ink-600 max-w-md leading-relaxed text-[15px]">
+            Menos decisão às pressas. Mais combinação com o que já é seu.
           </p>
-        </div>
+        </header>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-12">
-          <div className="card p-5">
+        {/* Card principal do último look — estilo daily card Cladwell/Whering */}
+        <section className="mb-12">
+          {loading ? (
+            <div className="card h-64 animate-pulse bg-ink-50/50" />
+          ) : latest ? (
+            <div className="card overflow-hidden grid md:grid-cols-2">
+              <OutfitCanvas
+                pieces={latest.items.map((li) => ({
+                  id: li.clothing_item.id,
+                  name: li.clothing_item.name,
+                  category: li.clothing_item.category,
+                  dominant_color: li.clothing_item.dominant_color,
+                  image: li.clothing_item.image_clean || li.clothing_item.image_front,
+                }))}
+              />
+              <div className="p-6 sm:p-8 flex flex-col justify-center">
+                <p className="editorial-kicker mb-2">Último look</p>
+                <h2 className="font-display text-2xl sm:text-3xl text-ink-950 mb-2 leading-snug">
+                  {latest.title}
+                </h2>
+                {latest.rationale && (
+                  <p className="text-sm text-ink-500 leading-relaxed mb-6 line-clamp-4">
+                    {latest.rationale}
+                  </p>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  <Link to="/swipe">
+                    <Button size="sm">Avaliar no swipe</Button>
+                  </Link>
+                  <Link to="/generate">
+                    <Button size="sm" variant="secondary">Novo look</Button>
+                  </Link>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="card p-8 sm:p-12 text-center">
+              <p className="font-display text-2xl text-ink-950 mb-2">Comece pelo closet</p>
+              <p className="text-sm text-ink-500 mb-6 max-w-sm mx-auto leading-relaxed">
+                Com duas peças já dá para gerar o primeiro look e ver a montagem em flat-lay.
+              </p>
+              <div className="flex flex-wrap justify-center gap-3">
+                <Link to="/wardrobe"><Button>Adicionar peças</Button></Link>
+                <Link to="/generate"><Button variant="secondary">Gerar mesmo assim</Button></Link>
+              </div>
+            </div>
+          )}
+        </section>
+
+        <section className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-12">
+          <div className="card p-4 sm:p-5">
             <p className="text-[10px] uppercase tracking-[0.16em] text-ink-400 mb-1">Peças</p>
             <p className="font-display text-3xl text-ink-950">{stats.pieces}</p>
           </div>
-          <div className="card p-5">
+          <div className="card p-4 sm:p-5">
             <p className="text-[10px] uppercase tracking-[0.16em] text-ink-400 mb-1">Looks</p>
             <p className="font-display text-3xl text-ink-950">{stats.looks}</p>
           </div>
-          <Link to="/feed" className="card-lift p-5 block">
-            <p className="text-[10px] uppercase tracking-[0.16em] text-accent mb-1">Feed</p>
-            <p className="font-display text-xl text-ink-950">Para você</p>
+          <Link to="/insights" className="card-lift p-4 sm:p-5 block">
+            <p className="text-[10px] uppercase tracking-[0.16em] text-accent mb-1">Análise</p>
+            <p className="font-display text-xl text-ink-950">Insights</p>
           </Link>
-          <Link to="/generate" className="card-lift p-5 block">
-            <p className="text-[10px] uppercase tracking-[0.16em] text-accent mb-1">Agora</p>
-            <p className="font-display text-xl text-ink-950">Gerar look</p>
+          <Link to="/community" className="card-lift p-4 sm:p-5 block">
+            <p className="text-[10px] uppercase tracking-[0.16em] text-accent mb-1">Social</p>
+            <p className="font-display text-xl text-ink-950">Referências</p>
           </Link>
-        </div>
+        </section>
 
-        <div className="grid md:grid-cols-2 gap-6 mb-14">
-          <div className="card p-6 md:p-8">
-            <h2 className="font-display text-2xl text-ink-950 mb-5">Rituais</h2>
-            <ol className="space-y-4 text-sm text-ink-600">
-              <li className="flex gap-4">
-                <span className="font-display text-accent text-lg leading-none">01</span>
-                <span>
-                  <Link to="/wardrobe" className="text-ink-900 underline underline-offset-4 decoration-ink-200">Peças com foto</Link>
-                  {' '}da galeria. Remover fundo é opcional e mais rápido agora.
-                </span>
-              </li>
-              <li className="flex gap-4">
-                <span className="font-display text-accent text-lg leading-none">02</span>
-                <span>
-                  <Link to="/feed" className="text-ink-900 underline underline-offset-4 decoration-ink-200">Feed Para você</Link>
-                  {' '}mistura suas peças com o que você já curtiu.
-                </span>
-              </li>
-              <li className="flex gap-4">
-                <span className="font-display text-accent text-lg leading-none">03</span>
-                <span>
-                  <Link to="/generate" className="text-ink-900 underline underline-offset-4 decoration-ink-200">Clima da cidade</Link>
-                  {' '}entra na montagem — não só a ocasião.
-                </span>
-              </li>
-            </ol>
+        <section className="section-rule">
+          <h2 className="font-display text-2xl text-ink-950 mb-6">Atalhos</h2>
+          <div className="grid sm:grid-cols-3 gap-4">
+            {[
+              { to: '/wardrobe', t: 'Guarda-roupa', d: 'Filtros por cor, categoria e comprimento.' },
+              { to: '/generate', t: 'Gerar + swipe', d: 'Clima manual, depois arraste o que gostou.' },
+              { to: '/feed', t: 'Para você', d: 'Combinações só com as suas peças.' },
+            ].map((x) => (
+              <Link key={x.to} to={x.to} className="card-lift p-5 block">
+                <p className="font-display text-lg text-ink-950 mb-1">{x.t}</p>
+                <p className="text-xs text-ink-500 leading-relaxed">{x.d}</p>
+              </Link>
+            ))}
           </div>
-
-          <div className="card p-6 md:p-8">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="font-display text-2xl text-ink-950">Recentes</h2>
-              <Link to="/looks" className="text-xs text-ink-400 hover:text-ink-700">Ver todos</Link>
-            </div>
-            {recent.length === 0 ? (
-              <p className="text-sm text-ink-500">Nenhum look ainda. O feed e o gerador esperam por peças.</p>
-            ) : (
-              <ul className="space-y-4">
-                {recent.map((look) => (
-                  <li key={look.id} className="border-b border-ink-50 pb-3 last:border-0 last:pb-0">
-                    <p className="text-sm font-medium text-ink-900">{look.title}</p>
-                    <p className="text-xs text-ink-400 mt-1">
-                      {look.items.map((i) => i.clothing_item.category).join(' · ')}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-
-        <div className="flex flex-wrap gap-3">
-          <Link to="/feed"><Button>Abrir feed</Button></Link>
-          <Link to="/wardrobe"><Button variant="secondary">Guarda-roupa</Button></Link>
-          <Link to="/style"><Button variant="ghost">Avaliar look</Button></Link>
-        </div>
+        </section>
       </div>
     )
   }
 
   return (
     <div className="mx-auto max-w-6xl px-5">
-      <section className="pt-16 pb-20 md:pt-28 md:pb-32">
+      <section className="pt-16 pb-20 sm:pt-28 sm:pb-32">
         <div className="max-w-2xl">
           <p className="editorial-kicker mb-5">Guarda-roupa com critério</p>
-          <h1 className="font-display text-5xl md:text-7xl leading-[1.05] text-ink-950 mb-6">
-            O que você já tem.<br />
-            <span className="text-accent">Bem combinado.</span>
+          <h1 className="font-display text-5xl sm:text-7xl leading-[1.05] text-ink-950 mb-6">
+            O que você já tem.
+            <br />
+            <span className="text-accent italic">Bem combinado.</span>
           </h1>
           <p className="text-ink-600 text-lg leading-relaxed mb-10 max-w-md">
-            Cadastre peças, veja o clima, receba um feed só com o seu closet
-            e monte o dia sem scroll infinito de loja.
+            Inventário visual, clima que você define, swipe de looks e referências da comunidade —
+            sem pedir sua localização e sem feed de loja.
           </p>
           <div className="flex flex-wrap gap-3">
             <Link to="/register"><Button>Criar conta</Button></Link>
@@ -138,28 +152,18 @@ export function Home() {
         </div>
       </section>
 
-      <section className="grid md:grid-cols-3 gap-10 pb-24 border-t border-ink-100 pt-16">
-        <div>
-          <p className="font-display text-accent text-2xl mb-2">01</p>
-          <h3 className="font-display text-xl text-ink-950 mb-2">Inventário seu</h3>
-          <p className="text-sm text-ink-600 leading-relaxed">
-            Foto da galeria ou câmera. Fundo opcional, processado no aparelho — mais leve do que antes.
-          </p>
-        </div>
-        <div>
-          <p className="font-display text-accent text-2xl mb-2">02</p>
-          <h3 className="font-display text-xl text-ink-950 mb-2">Feed Para você</h3>
-          <p className="text-sm text-ink-600 leading-relaxed">
-            Estilo Pinterest, mas só com combinações do seu armário e do que você marca como gostei.
-          </p>
-        </div>
-        <div>
-          <p className="font-display text-accent text-2xl mb-2">03</p>
-          <h3 className="font-display text-xl text-ink-950 mb-2">Clima na conta</h3>
-          <p className="text-sm text-ink-600 leading-relaxed">
-            Cidade entra na temperatura real. Menos short no frio, menos casaco no calor.
-          </p>
-        </div>
+      <section className="grid md:grid-cols-3 gap-12 pb-24 border-t border-ink-100 pt-16">
+        {[
+          { n: '01', t: 'Closet editorial', d: 'Foto, cor, categoria e filtros finos — como um lookbook só seu.' },
+          { n: '02', t: 'Decisão rápida', d: 'Gere looks, arraste no swipe e treine o que combina com você.' },
+          { n: '03', t: 'Referências reais', d: 'Posts de looks montados por pessoas, não por catálogo.' },
+        ].map((b) => (
+          <div key={b.n}>
+            <p className="font-display text-accent text-2xl mb-2">{b.n}</p>
+            <h3 className="font-display text-xl text-ink-950 mb-2">{b.t}</h3>
+            <p className="text-sm text-ink-600 leading-relaxed">{b.d}</p>
+          </div>
+        ))}
       </section>
     </div>
   )

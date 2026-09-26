@@ -12,6 +12,7 @@ import { Style } from './pages/Style'
 import { Feed } from './pages/Feed'
 import { Swipe } from './pages/Swipe'
 import { Community } from './pages/Community'
+import { Insights } from './pages/Insights'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const user = useAuthStore((s) => s.user)
@@ -39,6 +40,7 @@ export default function App() {
         <Route path="/style" element={<ProtectedRoute><Style /></ProtectedRoute>} />
         <Route path="/feed" element={<ProtectedRoute><Feed /></ProtectedRoute>} />
         <Route path="/community" element={<ProtectedRoute><Community /></ProtectedRoute>} />
+        <Route path="/insights" element={<ProtectedRoute><Insights /></ProtectedRoute>} />
       </Route>
     </Routes>
   )

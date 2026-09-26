@@ -10,11 +10,12 @@ export function Navbar() {
   const [open, setOpen] = useState(false)
 
   const links = [
-    { to: '/feed', label: 'Para você' },
-    { to: '/community', label: 'Referências' },
-    { to: '/wardrobe', label: 'Guarda-roupa' },
+    { to: '/wardrobe', label: 'Closet' },
     { to: '/generate', label: 'Gerar' },
     { to: '/swipe', label: 'Swipe' },
+    { to: '/feed', label: 'Para você' },
+    { to: '/community', label: 'Referências' },
+    { to: '/insights', label: 'Insights' },
     { to: '/style', label: 'Avaliar' },
   ]
 
@@ -42,7 +43,7 @@ export function Navbar() {
                 key={link.to}
                 to={link.to}
                 className={`text-sm tracking-wide transition-colors ${
-                  location.pathname === link.to
+                  location.pathname === link.to || location.pathname.startsWith(link.to + '/')
                     ? 'text-ink-950 font-medium'
                     : 'text-ink-500 hover:text-ink-800'
                 }`}
@@ -87,7 +88,7 @@ export function Navbar() {
       </div>
 
       {user && open && (
-        <div className="lg:hidden border-t border-ink-100 bg-cream-50 px-5 py-4 space-y-3">
+        <div className="lg:hidden border-t border-ink-100 bg-cream-50 px-5 py-4 space-y-3 max-h-[70vh] overflow-y-auto">
           {links.map((link) => (
             <Link
               key={link.to}
