@@ -9,6 +9,7 @@ import { Wardrobe } from './pages/Wardrobe'
 import { Generate } from './pages/Generate'
 import { Looks } from './pages/Looks'
 import { Style } from './pages/Style'
+import { Feed } from './pages/Feed'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const user = useAuthStore((s) => s.user)
@@ -33,6 +34,7 @@ export default function App() {
         <Route path="/generate" element={<ProtectedRoute><Generate /></ProtectedRoute>} />
         <Route path="/looks" element={<ProtectedRoute><Looks /></ProtectedRoute>} />
         <Route path="/style" element={<ProtectedRoute><Style /></ProtectedRoute>} />
+        <Route path="/feed" element={<ProtectedRoute><Feed /></ProtectedRoute>} />
       </Route>
     </Routes>
   )

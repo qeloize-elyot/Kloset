@@ -10,9 +10,10 @@ export function Navbar() {
   const [open, setOpen] = useState(false)
 
   const links = [
+    { to: '/feed', label: 'Para você' },
     { to: '/wardrobe', label: 'Guarda-roupa' },
-    { to: '/generate', label: 'Gerar look' },
-    { to: '/style', label: 'Montar e avaliar' },
+    { to: '/generate', label: 'Gerar' },
+    { to: '/style', label: 'Avaliar' },
     { to: '/looks', label: 'Histórico' },
   ]
 
@@ -23,21 +24,25 @@ export function Navbar() {
   }
 
   return (
-    <header className="border-b border-ink-100 bg-cream-50/95 backdrop-blur-sm sticky top-0 z-40">
+    <header className="border-b border-ink-100/80 bg-cream-50/90 backdrop-blur-md sticky top-0 z-40">
       <div className="mx-auto max-w-6xl px-5 h-16 flex items-center justify-between">
-        <Link to="/" className="font-display text-2xl tracking-tight text-ink-900" onClick={() => setOpen(false)}>
+        <Link
+          to="/"
+          className="font-display text-2xl tracking-tight text-ink-950"
+          onClick={() => setOpen(false)}
+        >
           Kloset
         </Link>
 
         {user && (
-          <nav className="hidden md:flex items-center gap-7">
+          <nav className="hidden md:flex items-center gap-6">
             {links.map((link) => (
               <Link
                 key={link.to}
                 to={link.to}
                 className={`text-sm tracking-wide transition-colors ${
                   location.pathname === link.to
-                    ? 'text-ink-900 font-medium'
+                    ? 'text-ink-950 font-medium'
                     : 'text-ink-500 hover:text-ink-800'
                 }`}
               >
@@ -88,7 +93,7 @@ export function Navbar() {
               to={link.to}
               onClick={() => setOpen(false)}
               className={`block text-sm py-1 ${
-                location.pathname === link.to ? 'text-ink-900 font-medium' : 'text-ink-600'
+                location.pathname === link.to ? 'text-ink-950 font-medium' : 'text-ink-600'
               }`}
             >
               {link.label}

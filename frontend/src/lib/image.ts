@@ -1,8 +1,8 @@
 /** Redimensiona e comprime para data URL (JPEG). */
 export async function fileToDataUrl(
   file: File,
-  maxSide = 900,
-  quality = 0.85
+  maxSide = 720,
+  quality = 0.8
 ): Promise<string> {
   const bitmap = await createImageBitmap(file)
   const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height))
@@ -17,7 +17,6 @@ export async function fileToDataUrl(
   return canvas.toDataURL('image/jpeg', quality)
 }
 
-/** Converte Blob em data URL PNG (preserva transparencia apos remocao de fundo). */
 export function blobToDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -27,11 +26,45 @@ export function blobToDataUrl(blob: Blob): Promise<string> {
   })
 }
 
-/** Remove o fundo da imagem no proprio navegador (sem servidor). */
+/**
+ * Remove fundo no navegador.
+ * Usa modelo pequeno + imagem já reduzida para não demorar "décadas".
+ */
 export async function removeBackground(dataUrlOrFile: string | File): Promise<string> {
-  const { removeBackground: removeBg } = await import('@imgly/background-removal')
-  const blob = await removeBg(dataUrlOrFile, {
-    output: { format: 'image/png', quality: 0.9 },
-  })
+  // redimensiona antes (o modelo pesa muito em fotos 4K)
+  let input: string | File = dataUrlOrFile
+  if (typeof dataUrlOrFile === 'string') {
+    input = await shrinkDataUrl(dataUrlOrFile, 512)
+  } else {
+    input = await fileToDataUrl(dataUrlOrFile, 512, 0.75)
+  }
+
+  const { removeBackground: removeBg, Config } = await import('@imgly/background-removal')
+
+  // modelo mais leve = bem mais rápido no celular
+  const config: Partial<Config> = {
+    model: 'small',
+    output: { format: 'image/png', quality: 0.85 },
+  }
+
+  const blob = await removeBg(input, config)
   return blobToDataUrl(blob)
+}
+
+async function shrinkDataUrl(dataUrl: string, maxSide: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => {
+      const scale = Math.min(1, maxSide / Math.max(img.width, img.height))
+      const w = Math.round(img.width * scale)
+      const h = Math.round(img.height * scale)
+      const canvas = document.createElement('canvas')
+      canvas.width = w
+      canvas.height = h
+      canvas.getContext('2d')!.drawImage(img, 0, 0, w, h)
+      resolve(canvas.toDataURL('image/jpeg', 0.75))
+    }
+    img.onerror = reject
+    img.src = dataUrl
+  })
 }
