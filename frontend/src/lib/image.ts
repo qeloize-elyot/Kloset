@@ -26,31 +26,6 @@ export function blobToDataUrl(blob: Blob): Promise<string> {
   })
 }
 
-/**
- * Remove fundo no navegador.
- * Usa modelo pequeno + imagem já reduzida para não demorar "décadas".
- */
-export async function removeBackground(dataUrlOrFile: string | File): Promise<string> {
-  // redimensiona antes (o modelo pesa muito em fotos 4K)
-  let input: string | File = dataUrlOrFile
-  if (typeof dataUrlOrFile === 'string') {
-    input = await shrinkDataUrl(dataUrlOrFile, 512)
-  } else {
-    input = await fileToDataUrl(dataUrlOrFile, 512, 0.75)
-  }
-
-  const { removeBackground: removeBg, Config } = await import('@imgly/background-removal')
-
-  // modelo mais leve = bem mais rápido no celular
-  const config: Partial<Config> = {
-    model: 'small',
-    output: { format: 'image/png', quality: 0.85 },
-  }
-
-  const blob = await removeBg(input, config)
-  return blobToDataUrl(blob)
-}
-
 async function shrinkDataUrl(dataUrl: string, maxSide: number): Promise<string> {
   return new Promise((resolve, reject) => {
     const img = new Image()
@@ -67,4 +42,25 @@ async function shrinkDataUrl(dataUrl: string, maxSide: number): Promise<string> 
     img.onerror = reject
     img.src = dataUrl
   })
+}
+
+/**
+ * Remove fundo no navegador.
+ * Reduz a imagem e usa modelo small para nao demorar no celular.
+ */
+export async function removeBackground(dataUrlOrFile: string | File): Promise<string> {
+  let input: string
+  if (typeof dataUrlOrFile === 'string') {
+    input = await shrinkDataUrl(dataUrlOrFile, 512)
+  } else {
+    input = await fileToDataUrl(dataUrlOrFile, 512, 0.75)
+  }
+
+  const { removeBackground: removeBg } = await import('@imgly/background-removal')
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const blob = await removeBg(input, {
+    model: 'small',
+    output: { format: 'image/png', quality: 0.85 },
+  } as any)
+  return blobToDataUrl(blob)
 }
