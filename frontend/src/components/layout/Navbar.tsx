@@ -11,10 +11,11 @@ export function Navbar() {
 
   const links = [
     { to: '/feed', label: 'Para você' },
+    { to: '/community', label: 'Referências' },
     { to: '/wardrobe', label: 'Guarda-roupa' },
     { to: '/generate', label: 'Gerar' },
+    { to: '/swipe', label: 'Swipe' },
     { to: '/style', label: 'Avaliar' },
-    { to: '/looks', label: 'Histórico' },
   ]
 
   const handleLogout = () => {
@@ -35,7 +36,7 @@ export function Navbar() {
         </Link>
 
         {user && (
-          <nav className="hidden md:flex items-center gap-6">
+          <nav className="hidden lg:flex items-center gap-5">
             {links.map((link) => (
               <Link
                 key={link.to}
@@ -55,15 +56,15 @@ export function Navbar() {
         <div className="flex items-center gap-2">
           {user ? (
             <>
-              <span className="hidden sm:block text-sm text-ink-500 max-w-[10rem] truncate">
+              <span className="hidden sm:block text-sm text-ink-500 max-w-[8rem] truncate">
                 {user.full_name || user.email.split('@')[0]}
               </span>
-              <Button variant="ghost" size="sm" onClick={handleLogout} className="hidden md:inline-flex">
+              <Button variant="ghost" size="sm" onClick={handleLogout} className="hidden lg:inline-flex">
                 Sair
               </Button>
               <button
                 type="button"
-                className="md:hidden p-2 text-ink-700"
+                className="lg:hidden p-2 text-ink-700"
                 aria-label="Menu"
                 onClick={() => setOpen((v) => !v)}
               >
@@ -86,7 +87,7 @@ export function Navbar() {
       </div>
 
       {user && open && (
-        <div className="md:hidden border-t border-ink-100 bg-cream-50 px-5 py-4 space-y-3">
+        <div className="lg:hidden border-t border-ink-100 bg-cream-50 px-5 py-4 space-y-3">
           {links.map((link) => (
             <Link
               key={link.to}

@@ -1,207 +1,121 @@
 import { FormEvent, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import api from '../lib/api'
 import type { Look } from '../lib/types'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 
-interface WeatherInfo {
-  city: string
-  temperature: number
-  feels_like?: number
-  condition: string
-}
+const CLIMATES = [
+  { id: 'frio', label: 'Frio', hint: '~12°C' },
+  { id: 'ameno', label: 'Ameno', hint: '~20°C' },
+  { id: 'calor', label: 'Calor', hint: '~30°C' },
+  { id: 'chuva', label: 'Chuva', hint: 'úmido' },
+  { id: 'vento', label: 'Vento', hint: 'fresco' },
+]
 
 export function Generate() {
+  const navigate = useNavigate()
   const [occasion, setOccasion] = useState('')
-  const [city, setCity] = useState('')
+  const [climate, setClimate] = useState('ameno')
   const [temperature, setTemperature] = useState('')
-  const [weather, setWeather] = useState<WeatherInfo | null>(null)
-  const [loadingWeather, setLoadingWeather] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [looks, setLooks] = useState<Look[]>([])
   const [error, setError] = useState('')
-
-  const fetchWeather = async () => {
-    if (!city.trim()) return
-    setLoadingWeather(true)
-    setError('')
-    try {
-      const { data } = await api.get<WeatherInfo>('/weather', {
-        params: { city: city.trim() },
-      })
-      setWeather(data)
-      if (data.temperature != null) {
-        setTemperature(String(Math.round(data.temperature)))
-      }
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setWeather(null)
-      setError(msg || 'Nao foi possivel obter o clima desta cidade.')
-    } finally {
-      setLoadingWeather(false)
-    }
-  }
 
   const handleGenerate = async (e: FormEvent) => {
     e.preventDefault()
     setError('')
     setLoading(true)
-    setLooks([])
     try {
       const { data } = await api.post<Look[]>('/looks/generate', {
         occasion,
-        city: city.trim() || null,
+        climate,
         temperature: temperature ? parseFloat(temperature) : null,
-        count: 3,
+        count: 6,
       })
-      setLooks(data)
+      // vai direto pro swipe com os looks gerados
+      sessionStorage.setItem('kloset_swipe_looks', JSON.stringify(data))
+      navigate('/swipe')
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setError(msg || 'Nao foi possivel gerar os looks. Adicione mais pecas ao guarda-roupa.')
+      setError(
+        typeof msg === 'string'
+          ? msg
+          : 'Não foi possível gerar. Adicione mais peças ao guarda-roupa.'
+      )
     } finally {
       setLoading(false)
     }
   }
 
-  const sendFeedback = async (lookId: number, rating: 'like' | 'dislike' | 'used') => {
-    try {
-      await api.post(`/looks/${lookId}/feedback`, { rating })
-    } catch {
-      // silencioso
-    }
-  }
-
   return (
     <div className="mx-auto max-w-6xl px-5 py-12">
-      <div className="max-w-xl mb-12">
-        <h1 className="font-display text-3xl text-ink-900 mb-2">Gerar look</h1>
-        <p className="text-sm text-ink-500">
-          Informe a ocasiao e a cidade. O clima local e usado para filtrar as pecas.
+      <div className="max-w-xl mb-10">
+        <p className="editorial-kicker mb-2">Roleta</p>
+        <h1 className="font-display text-4xl text-ink-950 mb-2">Gerar looks</h1>
+        <p className="text-sm text-ink-500 leading-relaxed">
+          Você define a ocasião e como está o clima. Sem cidade, sem localização —
+          só o que você sentir lá fora.
         </p>
       </div>
 
-      <form onSubmit={handleGenerate} className="card p-6 max-w-xl mb-12 space-y-5">
+      <form onSubmit={handleGenerate} className="card p-6 max-w-xl space-y-6">
         <Input
-          label="Ocasiao"
+          label="Ocasião"
           value={occasion}
           onChange={(e) => setOccasion(e.target.value)}
-          placeholder="Encontro, trabalho, casual, viagem…"
+          placeholder="Trabalho, encontro, casual, viagem…"
           required
         />
 
         <div>
-          <label className="label">Cidade</label>
-          <div className="flex gap-2">
-            <input
-              className="input flex-1"
-              value={city}
-              onChange={(e) => setCity(e.target.value)}
-              placeholder="Ex: Curitiba, Sao Paulo, Lisboa"
-            />
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={loadingWeather || !city.trim()}
-              onClick={fetchWeather}
-            >
-              {loadingWeather ? 'Buscando…' : 'Ver clima'}
-            </Button>
+          <p className="label">Como está o clima?</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {CLIMATES.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setClimate(c.id)}
+                className={`rounded-sm border px-3 py-3 text-left transition-colors ${
+                  climate === c.id
+                    ? 'border-ink-900 bg-ink-950 text-cream-50'
+                    : 'border-ink-200 bg-white hover:border-ink-400'
+                }`}
+              >
+                <span className="block text-sm font-medium">{c.label}</span>
+                <span
+                  className={`text-[11px] ${
+                    climate === c.id ? 'text-cream-200' : 'text-ink-400'
+                  }`}
+                >
+                  {c.hint}
+                </span>
+              </button>
+            ))}
           </div>
-          {weather && (
-            <p className="text-sm text-ink-600 mt-2">
-              {weather.city}: <strong>{Math.round(weather.temperature)}°C</strong>
-              {weather.condition ? ` · ${weather.condition}` : ''}
-              {weather.feels_like != null
-                ? ` (sensacao ${Math.round(weather.feels_like)}°C)`
-                : ''}
-            </p>
-          )}
         </div>
 
         <Input
-          label="Temperatura (°C) — preenchida pelo clima ou manual"
+          label="Temperatura °C (opcional, se quiser precisar)"
           type="number"
           value={temperature}
           onChange={(e) => setTemperature(e.target.value)}
-          placeholder="Ex: 18"
+          placeholder="Ex: 17"
         />
 
         <Button type="submit" disabled={loading || !occasion.trim()}>
-          {loading ? 'Montando…' : 'Montar looks'}
+          {loading ? 'Montando…' : 'Gerar e avaliar no swipe'}
         </Button>
       </form>
 
-      {error && <p className="text-sm text-red-600 mb-8">{error}</p>}
+      {error && <p className="text-sm text-red-600 mt-6">{error}</p>}
 
-      {looks.length > 0 && (
-        <div className="space-y-10">
-          <h2 className="font-display text-2xl text-ink-900">Sugestoes</h2>
-          {looks.map((look) => (
-            <article key={look.id} className="card p-6">
-              <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
-                <div>
-                  <h3 className="font-display text-xl text-ink-900">{look.title}</h3>
-                  {look.weather_condition && (
-                    <p className="text-xs text-ink-400 mt-1 uppercase tracking-wider">
-                      {look.temperature != null ? `${Math.round(look.temperature)}°C · ` : ''}
-                      {look.weather_condition}
-                    </p>
-                  )}
-                  {look.rationale && (
-                    <p className="text-sm text-ink-500 mt-1 max-w-2xl leading-relaxed">
-                      {look.rationale}
-                    </p>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="secondary" size="sm" onClick={() => sendFeedback(look.id, 'like')}>
-                    Gostei
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => sendFeedback(look.id, 'dislike')}>
-                    Nao usaria
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => sendFeedback(look.id, 'used')}>
-                    Usei
-                  </Button>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-3">
-                {look.items.map((li) => (
-                  <div
-                    key={li.id}
-                    className="flex items-center gap-3 border border-ink-100 rounded-sm px-3 py-2 bg-cream-50"
-                  >
-                    <div
-                      className="h-8 w-8 rounded-sm shrink-0"
-                      style={{ backgroundColor: li.clothing_item.dominant_color || '#ccc' }}
-                    />
-                    <div>
-                      <p className="text-sm font-medium text-ink-900 capitalize">
-                        {li.clothing_item.name || li.clothing_item.category}
-                      </p>
-                      <p className="text-xs text-ink-500 capitalize">
-                        {li.clothing_item.category}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </article>
-          ))}
-        </div>
-      )}
-
-      {!loading && looks.length === 0 && !error && (
-        <p className="text-sm text-ink-400">
-          Ainda nao gerou nenhum look. Preencha o formulario ou{' '}
-          <Link to="/wardrobe" className="underline underline-offset-2 text-ink-700">
-            adicione pecas
-          </Link>
-          .
-        </p>
-      )}
+      <p className="text-sm text-ink-400 mt-8">
+        Ou vá ao{' '}
+        <Link to="/wardrobe" className="underline underline-offset-2 text-ink-700">
+          guarda-roupa
+        </Link>{' '}
+        se ainda faltar peça.
+      </p>
     </div>
   )
 }

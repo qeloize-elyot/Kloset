@@ -10,6 +10,8 @@ import { Generate } from './pages/Generate'
 import { Looks } from './pages/Looks'
 import { Style } from './pages/Style'
 import { Feed } from './pages/Feed'
+import { Swipe } from './pages/Swipe'
+import { Community } from './pages/Community'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const user = useAuthStore((s) => s.user)
@@ -32,9 +34,11 @@ export default function App() {
         <Route path="/register" element={<Register />} />
         <Route path="/wardrobe" element={<ProtectedRoute><Wardrobe /></ProtectedRoute>} />
         <Route path="/generate" element={<ProtectedRoute><Generate /></ProtectedRoute>} />
+        <Route path="/swipe" element={<ProtectedRoute><Swipe /></ProtectedRoute>} />
         <Route path="/looks" element={<ProtectedRoute><Looks /></ProtectedRoute>} />
         <Route path="/style" element={<ProtectedRoute><Style /></ProtectedRoute>} />
         <Route path="/feed" element={<ProtectedRoute><Feed /></ProtectedRoute>} />
+        <Route path="/community" element={<ProtectedRoute><Community /></ProtectedRoute>} />
       </Route>
     </Routes>
   )
