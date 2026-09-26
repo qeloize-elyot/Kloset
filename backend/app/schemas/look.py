@@ -45,8 +45,11 @@ class LookFeedbackCreate(BaseModel):
 class GenerateLookRequest(BaseModel):
     occasion: str = Field(..., min_length=2, max_length=80)
     temperature: Optional[float] = None
-    city: Optional[str] = None
-    count: int = Field(default=3, ge=1, le=5)
+    # clima informado pelo usuario (sem cidade/GPS)
+    climate: Optional[str] = Field(
+        None, description="frio | ameno | calor | chuva | vento"
+    )
+    count: int = Field(default=5, ge=1, le=10)
 
 
 class EvaluateLookRequest(BaseModel):
