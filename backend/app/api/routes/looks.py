@@ -26,6 +26,15 @@ async def generate_looks(
     return await looks_service.generate_looks(db, current_user.id, request)
 
 
+@router.get("/feed")
+async def inspiration_feed(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Feed de inspiração a partir do guarda-roupa e do feedback do usuário."""
+    return await looks_service.get_inspiration_feed(db, current_user.id)
+
+
 @router.post("/evaluate", response_model=EvaluateLookResponse)
 async def evaluate_look(
     request: EvaluateLookRequest,

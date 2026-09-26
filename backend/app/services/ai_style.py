@@ -1,4 +1,4 @@
-"""Estilo com IA: Groq (prioridade) ou Gemini. Sem chave = regras no looks.py."""
+"""Estilo com IA: Groq (prioridade) ou Gemini."""
 from __future__ import annotations
 
 import json
@@ -27,7 +27,6 @@ def _extract_json(text: str) -> Any:
     if text.startswith("```"):
         text = re.sub(r"^```(?:json)?\s*", "", text)
         text = re.sub(r"\s*```$", "", text)
-    # tenta achar bloco JSON se vier texto extra
     start = text.find("{")
     end = text.rfind("}")
     if start >= 0 and end > start:
@@ -44,11 +43,14 @@ async def _call_groq(prompt: str) -> str:
         "messages": [
             {
                 "role": "system",
-                "content": "Voce e um estilista critico e honesto. Responda apenas JSON valido, sem markdown.",
+                "content": (
+                    "Voce e um estilista editorial brasileiro: criativo, sincero, "
+                    "sem bajulacao e sem cliches de moda. Responda apenas JSON valido."
+                ),
             },
             {"role": "user", "content": prompt},
         ],
-        "temperature": 0.65,
+        "temperature": 0.85,
         "max_tokens": 2048,
     }
     async with httpx.AsyncClient(timeout=60.0) as client:
@@ -71,7 +73,7 @@ async def _call_gemini(prompt: str) -> str:
         raise RuntimeError("GEMINI_API_KEY ausente")
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.65, "maxOutputTokens": 2048},
+        "generationConfig": {"temperature": 0.85, "maxOutputTokens": 2048},
     }
     async with httpx.AsyncClient(timeout=60.0) as client:
         r = await client.post(
@@ -112,20 +114,21 @@ async def generate_looks_with_ai(
         if temperature is not None
         else "Temperatura nao informada."
     )
-    prompt = f"""Monte {count} looks diferentes usando APENAS as pecas abaixo (use os IDs numericos).
+    prompt = f"""Monte {count} looks DIFERENTES entre si, usando APENAS as pecas abaixo (IDs numericos).
 Ocasiao: {occasion}
 {temp_line}
 
-Regras:
-- Combine cores, formalidade e clima com a ocasiao.
-- Nao force pecas que nao combinam.
-- Justifique de forma direta e honesta (2-4 frases).
-- Prefira look completo: cima + baixo; casaco se frio; calcado se houver.
+Seja criativo de verdade:
+- Evite o obvio (camiseta + jeans sempre iguais).
+- Explore contraste de cor, textura, proporcao e uma peca ancora.
+- Titulos curtos e com personalidade (nao "Look casual 1").
+- Justificativa honesta, 2-3 frases, como estilista de revista.
+- Prefira look completo: cima+baixo (+ calcado/casaco se fizer sentido).
 
 Guarda-roupa:
 {wardrobe_json}
 
-JSON obrigatorio:
+JSON:
 {{"looks":[{{"title":"...","rationale":"...","item_ids":[1,2,3]}}]}}
 """
     raw = await _call_llm(prompt)
@@ -148,16 +151,16 @@ async def evaluate_look_with_ai(
     if temperature is not None:
         ctx.append(f"Temperatura: {temperature:.0f} C")
     context = "\n".join(ctx) if ctx else "Contexto nao informado."
-    prompt = f"""Avalie este look com sinceridade (nao elogie sem motivo).
+    prompt = f"""Avalie este look com sinceridade editorial (sem bajular).
 
 {context}
 
 Pecas:
 {items_json}
 
-Criterios: cores, formalidade vs ocasiao, clima, proporcao, excesso ou pobreza visual.
+Criterios: cores, formalidade, clima, proporcao, risco de parecer generico ou forçado.
 
-JSON obrigatorio:
+JSON:
 {{"score":7,"verdict":"frase curta","pros":["..."],"cons":["..."],"suggestions":["..."]}}
 """
     raw = await _call_llm(prompt)
